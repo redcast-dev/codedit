@@ -1,567 +1,617 @@
-import { useEffect, useState } from "react";
-import FileExplorer from "./components/FileExplorer";
-import EditorComponent from "./components/Editor";
-import AIChat from "./components/AIChat";
-import CommandPalette from "./components/CommandPalette";
-import Terminal from "./components/Terminal";
-import { uid, defaultFiles } from "./lib/fs";
-import { fileSystemManager } from "./lib/fileSystemManager";
+import { useState, useEffect } from 'react';
+import ActivityBar from './components/ActivityBar';
+import TitleBar from './components/TitleBar';
+import StatusBar from './components/StatusBar';
+import EditorTabs from './components/EditorTabs';
+import Breadcrumb from './components/Breadcrumb';
+import FileExplorer from './components/FileExplorer';
+import EditorComponent from './components/Editor';
+import AIChatStudio from './components/AIChatStudio';
+import Terminal from './components/Terminal';
+import CommandPalette from './components/CommandPalette';
+import WelcomeScreen from './components/WelcomeScreen';
+import SettingsModal from './components/SettingsModal';
+import SearchPanel from './components/SearchPanel';
+import SourceControlPanel from './components/SourceControlPanel';
+import AIAgentsPanel from './components/AIAgentsPanel';
+import ExtensionsPanel from './components/ExtensionsPanel';
+import ApplicationMenu from './components/ApplicationMenu';
+import { uid, defaultFiles } from './lib/fs';
+import { fileSystemManager } from './lib/fileSystemManager';
+import { getMonacoTheme } from './lib/theme';
+import { getLanguageFromFilename } from './lib/utils';
 
+/**
+ * CODEDIT - Professional AI Code Editor
+ * Inspired by VS Code UI + Cursor/Windsurf/Antigravity AI-first UX
+ */
 export default function App() {
-  const [files, setFiles] = useState(defaultFiles);
-  const [folders, setFolders] = useState([]);
-  const [fileTree, setFileTree] = useState([]); // Tree structure for nested view
-  const [activeFile, setActiveFile] = useState(Object.keys(defaultFiles)[0]);
-  const [editorValue, setEditorValue] = useState(
-    files[Object.keys(defaultFiles)[0]]?.content || ""
-  );
-  const [theme, setTheme] = useState("vs-dark");
-  const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [showTerminal, setShowTerminal] = useState(true);
-  const [codeHistory, setCodeHistory] = useState([]); // Track code changes for revert
-  const [currentFolder, setCurrentFolder] = useState(null); // Current opened folder path
-  const [useLocalFileSystem, setUseLocalFileSystem] = useState(false); // Whether using local FS
+    // Theme
+    const [theme, setTheme] = useState('dark');
 
-  useEffect(() => {
-    // when activeFile changes, update editorValue
-    setEditorValue(files[activeFile]?.content || "");
-  }, [activeFile, files]);
+    // Settings
+    const [showSettings, setShowSettings] = useState(false);
+    const [settings, setSettings] = useState({
+        theme: 'dark',
+        fontSize: '14',
+        autoSave: false,
+        wordWrap: false,
+        minimap: true,
+        defaultShell: 'powershell',
+        aiSuggestions: true
+    });
 
-  useEffect(() => {
-    // Keyboard shortcuts
-    function handleKeyDown(e) {
-      // Ctrl+K or Cmd+K for command palette
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-        e.preventDefault();
-        setShowCommandPalette(true);
-      }
-      // Ctrl+` for terminal
-      if (e.ctrlKey && e.key === "`") {
-        e.preventDefault();
-        setShowTerminal((prev) => !prev);
-      }
-      // Ctrl+S for save
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        handleSave();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editorValue, activeFile]);
+    // Panel visibility
+    const [showSidebar, setShowSidebar] = useState(true);
+    const [showAIChat, setShowAIChat] = useState(true);
 
-  function updateFileContent(name, content) {
-    setFiles((prev) => ({ ...prev, [name]: { ...prev[name], content } }));
-    setEditorValue(content);
-  }
+    // File system
+    const [files, setFiles] = useState(defaultFiles);
+    const [folders, setFolders] = useState([]);
+    const [fileTree, setFileTree] = useState([]);
+    const [currentFolder, setCurrentFolder] = useState(null);
+    const [useLocalFileSystem, setUseLocalFileSystem] = useState(false);
 
-  function handleEditorChange(value) {
-    setEditorValue(value);
-  }
-
-  function saveToHistory(fileName, content) {
-    setCodeHistory((prev) => [
-      ...prev,
-      {
-        fileName,
-        content,
-        timestamp: Date.now(),
-      },
+    // Editor state
+    const [openTabs, setOpenTabs] = useState([
+        {
+            id: Object.keys(defaultFiles)[0],
+            name: Object.keys(defaultFiles)[0],
+            language: defaultFiles[Object.keys(defaultFiles)[0]]?.language || 'javascript',
+            isDirty: false
+        }
     ]);
-  }
+    const [activeTab, setActiveTab] = useState(Object.keys(defaultFiles)[0]);
+    const [editorValue, setEditorValue] = useState(
+        files[Object.keys(defaultFiles)[0]]?.content || ''
+    );
 
-  async function handleSave() {
-    updateFileContent(activeFile, editorValue);
-    
-    // If using local file system, write to disk
-    if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
-      try {
-        await fileSystemManager.writeFile(activeFile, editorValue);
-        console.log(`Saved ${activeFile} to local storage`);
-      } catch (err) {
-        console.error('Error saving to local storage:', err);
-        alert('Failed to save file to local storage: ' + err.message);
-      }
-    }
-  }
+    // UI state
+    const [activeView, setActiveView] = useState('explorer');
+    const [showCommandPalette, setShowCommandPalette] = useState(false);
+    const [showTerminal, setShowTerminal] = useState(true);
+    const [showApplicationMenu, setShowApplicationMenu] = useState(false);
 
-  async function handleCreate(customName, parentPath = '') {
-    const newName = customName || `file_${Object.keys(files).length + 1}.js`;
-    const ext = newName.split(".").pop();
-    const languageMap = {
-      js: "javascript",
-      jsx: "javascript",
-      ts: "typescript",
-      tsx: "typescript",
-      html: "html",
-      css: "css",
-      json: "json",
-      md: "markdown",
-    };
-    const language = languageMap[ext] || "javascript";
-    const initialContent = `// ${newName}`;
-    
-    // If using local file system, create file on disk
-    if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
-      try {
-        const newFile = await fileSystemManager.createFile(newName, initialContent, parentPath);
-        const fullPath = newFile.path;
-        setFiles((prev) => ({
-          ...prev,
-          [fullPath]: newFile,
-        }));
-        setActiveFile(fullPath);
-        // Reload tree
-        await reloadFileTree();
-        return;
-      } catch (err) {
-        console.error('Error creating file in local storage:', err);
-        alert('Failed to create file in local storage: ' + err.message);
-        return;
-      }
-    }
-    
-    // Fallback to in-memory
-    const fullPath = parentPath ? `${parentPath}/${newName}` : newName;
-    setFiles((prev) => ({
-      ...prev,
-      [fullPath]: { id: uid("f"), name: newName, path: fullPath, language, content: initialContent, type: "file" },
-    }));
-    setActiveFile(fullPath);
-  }
+    // Code history for revert
+    const [codeHistory, setCodeHistory] = useState([]);
 
-  async function handleDelete(name) {
-    // If using local file system, delete from disk
-    if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
-      try {
-        const deleted = await fileSystemManager.deleteFile(name);
-        if (deleted) {
-          console.log('Deleted file:', name);
-        } else {
-          console.log('File did not exist:', name);
-        }
-      } catch (err) {
-        console.error('Error deleting file from local storage:', err);
-        alert('Failed to delete file from local storage: ' + err.message);
-        return;
-      }
-    }
-    
-    const cp = { ...files };
-    delete cp[name];
-    setFiles(cp);
-    const remaining = Object.keys(cp)[0];
-    if (remaining) {
-      setActiveFile(remaining);
-    }
-  }
+    // Editor metadata
+    const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
+    const [totalLines, setTotalLines] = useState(0);
 
-  async function handleInsert(code, name = `snippet_${Date.now()}.js`) {
-    // Save current state to history before inserting
-    if (activeFile && files[activeFile]) {
-      saveToHistory(activeFile, files[activeFile].content);
-    }
-    
-    // Insert file into fs
-    const shortName = name || `snippet_${Date.now()}.js`;
-    setFiles((prev) => ({
-      ...prev,
-      [shortName]: { id: uid("f"), name: shortName, language: "javascript", content: code },
-    }));
-    setActiveFile(shortName);
-  }
+    // Update editor when active tab changes
+    useEffect(() => {
+        setEditorValue(files[activeTab]?.content || '');
+    }, [activeTab, files]);
 
-  function handleRevert() {
-    if (codeHistory.length === 0) return;
-    
-    const lastState = codeHistory[codeHistory.length - 1];
-    updateFileContent(lastState.fileName, lastState.content);
-    setCodeHistory((prev) => prev.slice(0, -1));
-  }
-
-  async function handleApplyCode(code) {
-    // Save current state before applying AI-generated code
-    if (activeFile && files[activeFile]) {
-      saveToHistory(activeFile, files[activeFile].content);
-    }
-    updateFileContent(activeFile, code);
-    
-    // Auto-save to local storage if enabled
-    if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
-      try {
-        await fileSystemManager.writeFile(activeFile, code);
-      } catch (err) {
-        console.error('Error saving AI code to local storage:', err);
-      }
-    }
-  }
-
-  async function reloadFileTree() {
-    if (!fileSystemManager.getDirectoryHandle()) return;
-    
-    try {
-      const { files: loadedFiles, folders: loadedFolders, tree } = await fileSystemManager.readFolder();
-      setFiles(loadedFiles);
-      setFolders(loadedFolders);
-      setFileTree(tree);
-    } catch (err) {
-      console.error('Error reloading file tree:', err);
-    }
-  }
-
-  async function handleOpenFolder() {
-    if (!fileSystemManager.isFileSystemAccessSupported()) {
-      alert('File System Access API is not supported in your browser. Please use Chrome, Edge, or another Chromium-based browser.');
-      return;
-    }
-
-    try {
-      const dirHandle = await fileSystemManager.openFolder();
-      if (!dirHandle) return; // User cancelled
-
-      const { files: loadedFiles, folders: loadedFolders, tree } = await fileSystemManager.readFolder(dirHandle);
-      
-      setFiles(loadedFiles);
-      setFolders(loadedFolders);
-      setFileTree(tree);
-      setCurrentFolder(dirHandle.name);
-      setUseLocalFileSystem(true);
-      
-      // Set first file as active
-      const firstFile = Object.keys(loadedFiles)[0];
-      if (firstFile) {
-        setActiveFile(firstFile);
-      }
-      
-      console.log('Opened folder:', dirHandle.name);
-    } catch (err) {
-      console.error('Error opening folder:', err);
-      alert('Failed to open folder: ' + err.message);
-    }
-  }
-
-  async function handleCreateFolder(folderName, parentPath = '') {
-    if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
-      try {
-        const newFolder = await fileSystemManager.createFolder(folderName, parentPath);
-        setFolders((prev) => [...prev, newFolder]);
-        console.log('Created folder:', folderName);
-        // Reload tree
-        await reloadFileTree();
-      } catch (err) {
-        console.error('Error creating folder:', err);
-        alert('Failed to create folder: ' + err.message);
-      }
-    } else {
-      // In-memory folder creation (just for display)
-      const fullPath = parentPath ? `${parentPath}/${folderName}` : folderName;
-      setFolders((prev) => [
-        ...prev,
-        { id: uid("folder"), name: folderName, path: fullPath, type: "folder", children: [] },
-      ]);
-    }
-  }
-
-  async function handleDeleteFolder(folderName) {
-    if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
-      try {
-        const deleted = await fileSystemManager.deleteFolder(folderName);
-        setFolders((prev) => prev.filter((f) => f.name !== folderName));
-        if (deleted) {
-          console.log('Deleted folder:', folderName);
-        } else {
-          console.log('Folder did not exist:', folderName);
-        }
-      } catch (err) {
-        console.error('Error deleting folder:', err);
-        alert('Failed to delete folder: ' + err.message);
-      }
-    } else {
-      setFolders((prev) => prev.filter((f) => f.name !== folderName));
-    }
-  }
-
-  async function handleGenerateProject(project) {
-    if (!project || !project.files) return;
-    
-    try {
-      // If local file system is active, create files on disk
-      if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
-        for (const file of project.files) {
-          const pathParts = file.path.split('/');
-          const fileName = pathParts.pop();
-          const folderPath = pathParts.join('/');
-          
-          // Create nested folders if needed
-          if (folderPath) {
-            const folders = pathParts;
-            let currentPath = '';
-            for (const folder of folders) {
-              try {
-                await fileSystemManager.createFolder(folder, currentPath);
-                currentPath = currentPath ? `${currentPath}/${folder}` : folder;
-              } catch (e) {
-                // Folder might already exist, continue
-              }
+    // Keyboard shortcuts
+    useEffect(() => {
+        function handleKeyDown(e) {
+            // Ctrl+K for command palette
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                setShowCommandPalette(true);
             }
-          }
-          
-          // Create the file
-          const newFile = await fileSystemManager.createFile(fileName, file.content, folderPath);
-          setFiles((prev) => ({
+            // Ctrl+` for terminal
+            if (e.ctrlKey && e.key === '`') {
+                e.preventDefault();
+                setShowTerminal(prev => !prev);
+            }
+            // Ctrl+S for save
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                handleSave();
+            }
+            // Ctrl+B for sidebar
+            if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                e.preventDefault();
+                setShowSidebar(prev => !prev);
+            }
+            // Ctrl+Shift+C for AI chat
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+                e.preventDefault();
+                setShowAIChat(prev => !prev);
+            }
+            // Ctrl+Shift+E for explorer
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'E') {
+                e.preventDefault();
+                setActiveView('explorer');
+            }
+            // Ctrl+Shift+F for search
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+                e.preventDefault();
+                setActiveView('search');
+            }
+            // Ctrl+Shift+G for source control
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'G') {
+                e.preventDefault();
+                setActiveView('source-control');
+            }
+            // Ctrl+Shift+A for AI agents
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'A') {
+                e.preventDefault();
+                setActiveView('ai-agents');
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [activeTab, editorValue]);
+
+    // File operations
+    function handleEditorChange(value) {
+        setEditorValue(value);
+        // Mark tab as dirty
+        setOpenTabs(tabs =>
+            tabs.map(tab =>
+                tab.id === activeTab ? { ...tab, isDirty: true } : tab
+            )
+        );
+    }
+
+    async function handleSave() {
+        updateFileContent(activeTab, editorValue);
+
+        // Mark tab as clean
+        setOpenTabs(tabs =>
+            tabs.map(tab =>
+                tab.id === activeTab ? { ...tab, isDirty: false } : tab
+            )
+        );
+
+        // Save to local file system if enabled
+        if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
+            try {
+                await fileSystemManager.writeFile(activeTab, editorValue);
+                console.log(`Saved ${activeTab}`);
+            } catch (err) {
+                console.error('Error saving:', err);
+            }
+        }
+    }
+
+    function updateFileContent(name, content) {
+        setFiles(prev => ({ ...prev, [name]: { ...prev[name], content } }));
+    }
+
+    async function handleFileSelect(filePath) {
+        setActiveTab(filePath);
+
+        // Add to open tabs if not already open
+        if (!openTabs.find(tab => tab.id === filePath)) {
+            const file = files[filePath];
+            setOpenTabs(prev => [...prev, {
+                id: filePath,
+                name: file?.name || filePath,
+                language: file?.language || getLanguageFromFilename(filePath),
+                isDirty: false
+            }]);
+        }
+    }
+
+    function handleTabClose(tabId) {
+        const newTabs = openTabs.filter(tab => tab.id !== tabId);
+        setOpenTabs(newTabs);
+
+        // If closing active tab, switch to another
+        if (tabId === activeTab && newTabs.length > 0) {
+            setActiveTab(newTabs[0].id);
+        }
+    }
+
+    async function handleCreate(customName, content = null, parentPath = '') {
+        let nameToCreate = customName;
+        let pathToCreate = parentPath;
+
+        if (customName && customName.includes('/')) {
+            const parts = customName.split('/');
+            nameToCreate = parts.pop();
+            const relativePath = parts.join('/');
+            pathToCreate = parentPath ? `${parentPath}/${relativePath}` : relativePath;
+        }
+
+        const newName = nameToCreate || `file_${Object.keys(files).length + 1}.js`;
+        const language = getLanguageFromFilename(newName);
+        const initialContent = content !== null ? content : `// ${newName}`;
+
+        if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
+            try {
+                const newFile = await fileSystemManager.createFile(newName, initialContent, pathToCreate);
+                const fullPath = newFile.path;
+                setFiles(prev => ({ ...prev, [fullPath]: newFile }));
+                handleFileSelect(fullPath);
+                await reloadFileTree();
+                return;
+            } catch (err) {
+                console.error('Error creating file:', err);
+                return;
+            }
+        }
+
+        const fullPath = pathToCreate ? `${pathToCreate}/${newName}` : newName;
+        setFiles(prev => ({
             ...prev,
-            [newFile.path]: newFile,
-          }));
-        }
-        
-        // Reload tree to show new structure
-        await reloadFileTree();
-        
-        // Count folders created
-        const folderCount = new Set(
-          project.files
-            .map(f => f.path.split('/').slice(0, -1).join('/'))
-            .filter(p => p)
-        ).size;
-        
-        alert(`✅ Successfully created ${project.files.length} files${folderCount > 0 ? ` and ${folderCount} folders` : ''} in your workspace!`);
-      } else {
-        // In-memory mode: create folder structure and files
-        const newFiles = {};
-        const newFolders = [];
-        const folderSet = new Set();
-        
-        // First pass: collect all folders
-        project.files.forEach(file => {
-          const pathParts = file.path.split('/');
-          if (pathParts.length > 1) {
-            // Has folders
-            let currentPath = '';
-            for (let i = 0; i < pathParts.length - 1; i++) {
-              const folderName = pathParts[i];
-              const parentPath = currentPath;
-              currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
-              
-              if (!folderSet.has(currentPath)) {
-                folderSet.add(currentPath);
-                newFolders.push({
-                  id: uid('folder'),
-                  name: folderName,
-                  path: currentPath,
-                  type: 'folder',
-                  children: []
-                });
-              }
+            [fullPath]: {
+                id: uid('f'),
+                name: newName,
+                path: fullPath,
+                language,
+                content: initialContent,
+                type: 'file'
             }
-          }
-        });
-        
-        // Second pass: create files
-        project.files.forEach(file => {
-          const ext = file.path.split('.').pop();
-          const languageMap = {
-            js: 'javascript',
-            jsx: 'javascript',
-            ts: 'typescript',
-            tsx: 'typescript',
-            html: 'html',
-            css: 'css',
-            json: 'json',
-            md: 'markdown',
-          };
-          const language = languageMap[ext] || 'javascript';
-          
-          newFiles[file.path] = {
-            id: uid('f'),
-            name: file.path.split('/').pop(),
-            path: file.path,
-            language,
-            content: file.content,
-            type: 'file',
-          };
-        });
-        
-        // Update state
-        setFolders((prev) => [...prev, ...newFolders]);
-        setFiles((prev) => ({ ...prev, ...newFiles }));
-        
-        // Set first file as active
-        const firstFile = Object.keys(newFiles)[0];
-        if (firstFile) {
-          setActiveFile(firstFile);
+        }));
+        handleFileSelect(fullPath);
+    }
+
+    async function handleDelete(name) {
+        if (useLocalFileSystem && fileSystemManager.getDirectoryHandle()) {
+            try {
+                await fileSystemManager.deleteFile(name);
+            } catch (err) {
+                console.error('Error deleting file:', err);
+            }
         }
-        
-        alert(`✅ Created ${project.files.length} files and ${newFolders.length} folders!\n\n💡 Tip: Open a local folder to save them to disk.`);
-      }
-    } catch (err) {
-      console.error('Error generating project:', err);
-      
-      // Handle specific file system errors
-      if (err.message.includes('Directory access expired') || 
-          err.message.includes('state cached in an interface object')) {
-        // Clear stale handles
-        fileSystemManager.clearHandles();
-        setUseLocalFileSystem(false);
-        setCurrentFolder(null);
-        
-        alert('⚠️ Directory access expired. The folder connection was lost.\n\n' +
-              '📁 Please click "Open Folder" again to reconnect, then try creating the project again.\n\n' +
-              '💡 Tip: This can happen if the folder was moved, renamed, or if browser permissions expired.');
-      } else {
-        alert('Failed to generate project: ' + err.message);
-      }
+
+        const cp = { ...files };
+        delete cp[name];
+        setFiles(cp);
+
+        // Close tab if open
+        handleTabClose(name);
     }
-  }
 
-  function handleCommand(commandId) {
-    switch (commandId) {
-      case "new-file":
-        handleCreate();
-        break;
-      case "save":
-        handleSave();
-        break;
-      case "delete-file":
-        if (activeFile) handleDelete(activeFile);
-        break;
-      case "toggle-theme":
-        setTheme((t) => (t === "vs-dark" ? "light" : "vs-dark"));
-        break;
-      case "toggle-terminal":
-        setShowTerminal((prev) => !prev);
-        break;
-      case "revert-code":
-        handleRevert();
-        break;
-      default:
-        console.log("Command:", commandId);
+    async function handleOpenFolder() {
+        if (!fileSystemManager.isFileSystemAccessSupported()) {
+            alert('File System Access API not supported. Use Chrome/Edge.');
+            return;
+        }
+
+        try {
+            const dirHandle = await fileSystemManager.openFolder();
+            if (!dirHandle) return;
+
+            const { files: loadedFiles, folders: loadedFolders, tree } =
+                await fileSystemManager.readFolder(dirHandle);
+
+            setFiles(loadedFiles);
+            setFolders(loadedFolders);
+            setFileTree(tree);
+            setCurrentFolder(dirHandle.name);
+            setUseLocalFileSystem(true);
+
+            const firstFile = Object.keys(loadedFiles)[0];
+            if (firstFile) {
+                handleFileSelect(firstFile);
+            }
+        } catch (err) {
+            console.error('Error opening folder:', err);
+        }
     }
-  }
 
-  const active = files[activeFile];
-  const languageForEditor = active?.language === "html" ? "html" : active?.language || "javascript";
+    async function reloadFileTree() {
+        if (!fileSystemManager.getDirectoryHandle()) return;
 
-  return (
-    <div className="h-screen flex flex-col font-sans bg-gray-50">
-      {/* Command Palette */}
-      <CommandPalette
-        isOpen={showCommandPalette}
-        onClose={() => setShowCommandPalette(false)}
-        onCommand={handleCommand}
-      />
+        try {
+            const { files: loadedFiles, folders: loadedFolders, tree } =
+                await fileSystemManager.readFolder();
+            setFiles(loadedFiles);
+            setFolders(loadedFolders);
+            setFileTree(tree);
+        } catch (err) {
+            console.error('Error reloading:', err);
+        }
+    }
 
-      {/* Topbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b bg-white shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            CODEDIT
-          </div>
-          <div className="text-sm text-gray-500">AI-Powered Code Editor</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="text-sm px-3 py-1.5 border rounded hover:bg-gray-50 flex items-center gap-2"
-            onClick={() => setShowCommandPalette(true)}
-            title="Command Palette (Ctrl+K)"
-          >
-            <span>⌘</span> Commands
-          </button>
-          <button
-            className="text-sm px-3 py-1.5 border rounded hover:bg-gray-50"
-            onClick={() => setTheme((t) => (t === "vs-dark" ? "light" : "vs-dark"))}
-            title="Toggle Theme"
-          >
-            {theme === "vs-dark" ? "🌙" : "☀️"}
-          </button>
-          <button
-            className="text-sm px-3 py-1.5 border rounded hover:bg-gray-50"
-            onClick={handleRevert}
-            disabled={codeHistory.length === 0}
-            title="Revert Last Change"
-          >
-            ↩️ Revert ({codeHistory.length})
-          </button>
-          <button
-            className="text-sm px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700"
-            onClick={handleSave}
-            title="Save (Ctrl+S)"
-          >
-            💾 Save
-          </button>
-        </div>
-      </div>
+    function handleSettingsChange(newSettings) {
+        setSettings(newSettings);
+        // Apply theme change immediately
+        if (newSettings.theme !== theme) {
+            setTheme(newSettings.theme);
+        }
+        // Save to localStorage
+        localStorage.setItem('codedit-settings', JSON.stringify(newSettings));
+    }
 
-      {/* Main area - 3 panel layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar: File Explorer */}
-        <div className="w-72 border-r shadow-sm flex flex-col">
-          <FileExplorer
-            files={files}
-            folders={folders}
-            fileTree={fileTree}
-            activeFile={activeFile}
-            onSelect={(n) => setActiveFile(n)}
-            onCreate={handleCreate}
-            onDelete={handleDelete}
-            onCreateFolder={handleCreateFolder}
-            onDeleteFolder={handleDeleteFolder}
-            onOpenFolder={handleOpenFolder}
-            currentFolder={currentFolder}
-          />
-        </div>
+    // Load settings from localStorage on mount
+    useEffect(() => {
+        const savedSettings = localStorage.getItem('codedit-settings');
+        if (savedSettings) {
+            try {
+                const parsed = JSON.parse(savedSettings);
+                setSettings(parsed);
+                if (parsed.theme) {
+                    setTheme(parsed.theme);
+                }
+            } catch (err) {
+                console.error('Error loading settings:', err);
+            }
+        }
+    }, []);
 
-        {/* Center: Editor + Terminal (fixed at bottom) */}
-        <div className="flex-1 flex flex-col">
-          {/* Editor header */}
-          <div className="flex items-center justify-between px-4 py-2 border-b bg-white">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">{activeFile}</span>
-              <span className="text-xs px-2 py-0.5 bg-gray-100 rounded">{active?.language}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="text-xs text-gray-500">Monaco: {languageForEditor}</div>
-              <button
-                onClick={() => setShowTerminal((prev) => !prev)}
-                className="text-xs px-2 py-1 border rounded hover:bg-gray-100"
-                title="Toggle Terminal (Ctrl+`)"
-              >
-                {showTerminal ? "Hide" : "Show"} Terminal
-              </button>
-            </div>
-          </div>
+    function handleCommand(commandId) {
+        switch (commandId) {
+            case 'new-file':
+                handleCreate();
+                break;
+            case 'save':
+                handleSave();
+                break;
+            case 'delete-file':
+                if (activeTab) handleDelete(activeTab);
+                break;
+            case 'toggle-theme':
+                const newTheme = theme === 'dark' ? 'light' : 'dark';
+                setTheme(newTheme);
+                setSettings(prev => ({ ...prev, theme: newTheme }));
+                break;
+            case 'toggle-terminal':
+                setShowTerminal(prev => !prev);
+                break;
+            case 'toggle-sidebar':
+                setShowSidebar(prev => !prev);
+                break;
+            case 'toggle-ai-chat':
+                setShowAIChat(prev => !prev);
+                break;
+            default:
+                console.log('Command:', commandId);
+        }
+    }
 
-          {/* Editor */}
-          <div className={showTerminal ? "flex-1" : "flex-1"}>
-            <EditorComponent
-              language={languageForEditor}
-              theme={theme}
-              value={editorValue}
-              onChange={handleEditorChange}
+    function handleApplyCode(code) {
+        // Save current code to history before applying new code
+        setCodeHistory(prev => [...prev, {
+            code: editorValue,
+            file: activeTab,
+            timestamp: new Date()
+        }]);
+
+        setEditorValue(code);
+        updateFileContent(activeTab, code);
+    }
+
+    function handleRevert() {
+        if (codeHistory.length === 0) return;
+
+        const lastState = codeHistory[codeHistory.length - 1];
+        setEditorValue(lastState.code);
+        updateFileContent(activeTab, lastState.code);
+        setCodeHistory(prev => prev.slice(0, -1));
+    }
+
+    function handleApplicationMenuAction(actionId) {
+        switch (actionId) {
+            case 'new-file':
+                handleCreate('untitled.js');
+                break;
+            case 'open-folder':
+                handleOpenFolder();
+                break;
+            case 'save':
+                handleSave();
+                break;
+            case 'settings':
+                setShowSettings(true);
+                break;
+            case 'about':
+                alert('CODEDIT v1.0.0\nAI-Powered Professional Code Editor');
+                break;
+            case 'help':
+                window.open('https://github.com/codedit/help', '_blank');
+                break;
+        }
+    }
+
+    const activeFile = files[activeTab];
+    const languageForEditor = activeFile?.language || 'javascript';
+    const showWelcome = !currentFolder && fileTree.length === 0;
+
+    return (
+        <div className="h-screen flex flex-col bg-[#1e1e1e] text-[#cccccc]">
+            {/* Command Palette */}
+            <CommandPalette
+                isOpen={showCommandPalette}
+                onClose={() => setShowCommandPalette(false)}
+                onCommand={handleCommand}
             />
-          </div>
 
-          {/* Terminal - Fixed at bottom */}
-          {showTerminal && (
-            <div className="h-64 border-t">
-              <Terminal isVisible={true} onClose={() => setShowTerminal(false)} />
+            {/* Settings Modal */}
+            <SettingsModal
+                isOpen={showSettings}
+                onClose={() => setShowSettings(false)}
+                settings={settings}
+                onSettingsChange={handleSettingsChange}
+                theme={theme}
+            />
+
+            {/* Application Menu */}
+            <ApplicationMenu
+                isOpen={showApplicationMenu}
+                onClose={() => setShowApplicationMenu(false)}
+                theme={theme}
+                onAction={handleApplicationMenuAction}
+            />
+
+            {/* Title Bar */}
+            <TitleBar
+                theme={theme}
+                projectName={currentFolder || 'Untitled'}
+                folderPath={currentFolder}
+                onOpenFolder={handleOpenFolder}
+                onSettings={() => setShowSettings(true)}
+                onMenu={() => setShowApplicationMenu(true)}
+                onMinimize={() => console.log('Minimize')}
+                onMaximize={() => console.log('Maximize')}
+                onClose={() => console.log('Close')}
+            />
+
+            {/* Main Content */}
+            <div className="flex-1 flex overflow-hidden">
+                {/* Activity Bar */}
+                <ActivityBar
+                    activeView={activeView}
+                    onViewChange={setActiveView}
+                    theme={theme}
+                />
+
+                {/* Sidebar - Collapsible */}
+                {showSidebar && (
+                    <div className={`w-80 flex flex-col border-r ${theme === 'dark' ? 'bg-[#252526] border-[#1e1e1e]' : 'bg-[#f3f3f3] border-[#e5e5e5]'
+                        }`}>
+                        {activeView === 'explorer' && (
+                            <FileExplorer
+                                files={files}
+                                folders={folders}
+                                fileTree={fileTree}
+                                activeFile={activeTab}
+                                onSelect={handleFileSelect}
+                                onCreate={handleCreate}
+                                onDelete={handleDelete}
+                                onOpenFolder={handleOpenFolder}
+                                currentFolder={currentFolder}
+                            />
+                        )}
+                        {activeView === 'search' && (
+                            <SearchPanel
+                                theme={theme}
+                                files={files}
+                                onFileSelect={handleFileSelect}
+                            />
+                        )}
+                        {activeView === 'source-control' && (
+                            <SourceControlPanel theme={theme} />
+                        )}
+                        {activeView === 'ai-agents' && (
+                            <AIAgentsPanel
+                                theme={theme}
+                                onAgentSelect={(agentId) => {
+                                    console.log('Selected agent:', agentId);
+                                    setShowAIChat(true);
+                                }}
+                            />
+                        )}
+                        {activeView === 'extensions' && (
+                            <ExtensionsPanel theme={theme} />
+                        )}
+                        {activeView === 'terminal' && (
+                            <div className="p-4">
+                                <div className="text-sm font-semibold mb-2">Terminal</div>
+                                <div className="text-xs opacity-60">Use Ctrl+` to toggle terminal</div>
+                            </div>
+                        )}
+                        {activeView === 'settings' && (
+                            <div className="p-4">
+                                <button
+                                    onClick={() => setShowSettings(true)}
+                                    className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                                >
+                                    Open Settings
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Editor Area */}
+                <div className="flex-1 flex flex-col">
+                    {showWelcome ? (
+                        <WelcomeScreen
+                            onOpenFolder={handleOpenFolder}
+                            onNewFile={() => handleCreate('untitled.js')}
+                            theme={theme}
+                        />
+                    ) : (
+                        <>
+                            {/* Tabs */}
+                            <EditorTabs
+                                tabs={openTabs}
+                                activeTab={activeTab}
+                                onTabClick={setActiveTab}
+                                onTabClose={handleTabClose}
+                                theme={theme}
+                            />
+
+                            {/* Breadcrumb */}
+                            <Breadcrumb
+                                path={activeTab}
+                                theme={theme}
+                            />
+
+                            {/* Toolbar for toggles */}
+                            <div className={`flex items-center justify-between px-3 py-1 border-b ${theme === 'dark' ? 'bg-[#252526] border-[#1e1e1e]' : 'bg-gray-50 border-gray-200'
+                                }`}>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setShowSidebar(prev => !prev)}
+                                        className={`text-xs px-2 py-1 rounded ${theme === 'dark' ? 'hover:bg-[#3c3c3c]' : 'hover:bg-gray-200'
+                                            }`}
+                                        title="Toggle Sidebar (Ctrl+B)"
+                                    >
+                                        {showSidebar ? '◀ Hide Sidebar' : '▶ Show Sidebar'}
+                                    </button>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setShowAIChat(prev => !prev)}
+                                        className={`text-xs px-2 py-1 rounded ${theme === 'dark' ? 'hover:bg-[#3c3c3c]' : 'hover:bg-gray-200'
+                                            }`}
+                                        title="Toggle AI Assistant"
+                                    >
+                                        {showAIChat ? 'Hide AI ▶' : '◀ Show AI'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Editor */}
+                            <div className="flex-1">
+                                <EditorComponent
+                                    language={languageForEditor}
+                                    theme={getMonacoTheme(theme)}
+                                    value={editorValue}
+                                    onChange={handleEditorChange}
+                                />
+                            </div>
+
+                            {/* Terminal */}
+                            {showTerminal && (
+                                <div className="h-64 border-t border-[#252526]">
+                                    <Terminal isVisible={true} onClose={() => setShowTerminal(false)} />
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
+                {/* AI Chat Studio (Right Panel) - Collapsible */}
+                {showAIChat && !showWelcome && (
+                    <div className="w-96 border-l border-[#252526]">
+                        <AIChatStudio
+                            theme={theme}
+                            code={editorValue}
+                            language={languageForEditor}
+                            files={files}
+                            onApplyCode={handleApplyCode}
+                            onCreateFile={handleCreate}
+                            onRevert={handleRevert}
+                        />
+                    </div>
+                )}
             </div>
-          )}
-        </div>
 
-        {/* Right sidebar: AI Assistant only */}
-        <div className="w-96 flex flex-col border-l bg-white shadow-sm">
-          <AIChat
-            code={editorValue}
-            language={active?.language || "javascript"}
-            files={files}
-            onInsert={handleInsert}
-            onApplyCode={handleApplyCode}
-            onRevert={handleRevert}
-            canRevert={codeHistory.length > 0}
-            onGenerateProject={handleGenerateProject}
-          />
+            {/* Status Bar */}
+            <StatusBar
+                theme={theme}
+                gitBranch="main"
+                gitStatus="synced"
+                language={languageForEditor}
+                lineNumber={cursorPosition.line}
+                columnNumber={cursorPosition.column}
+                totalLines={editorValue.split('\n').length}
+                errors={0}
+                warnings={0}
+                isOnline={true}
+                notifications={0}
+            />
         </div>
-      </div>
-    </div>
-  );
+    );
 }

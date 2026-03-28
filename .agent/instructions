@@ -1,0 +1,29 @@
+# CODEDIT - AI Development Guidelines
+
+You are working on **CODEDIT**, a professional-grade AI Code Editor inspired by VS Code and modern AI-first IDEs like Cursor and Windsurf.
+
+## UI/UX Standards
+- **Consistency**: All new components should match the professional "Dark+" theme of VS Code.
+- **Library**: Use React 18 and Tailwind CSS for styling.
+- **Icons**: Use `lucide-react` for all UI icons.
+- **Components**: Utilize Radix UI primitives for complex components like Dialogs, Tooltips, and Dropdowns.
+- **Editor**: All editing functionality is powered by the Monaco Editor.
+
+## Backend Architecture
+- **API**: Express.js server in the `server/` directory.
+- **AI Integration**: AI logic is centralized in `server/routes/chat.js`.
+- **WebSocket**: Used for real-time terminal synchronization.
+
+## AI Assistant Goals
+- **Contextual Awareness**: The AI should always be aware of the currently open files and project structure.
+- **Direct Application**: Code suggested by the AI should be ready to be applied directly to the files.
+- **Professionalism**: Maintain a high bar for code quality, avoiding placeholders and unfinished logic.
+
+## Project Structure
+- `src/`: Frontend React code.
+- `src/components/`: Modular UI components.
+- `src/lib/`: Core libraries (file system manager, theme utilities).
+- `server/`: Express backend.
+- `public/`: Static assets.
+
+When interacting with this codebase, ensure that you follow these professional standards to maintain the world-class quality of CODEDIT.

@@ -1,0 +1,164 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* VS Code Dark+ Theme Colors */
+  --vscode-editor-background: #1e1e1e;
+  --vscode-editor-foreground: #d4d4d4;
+  --vscode-sidebar-background: #252526;
+  --vscode-activitybar-background: #333333;
+  --vscode-statusbar-background: #007acc;
+  --vscode-titlebar-background: #3c3c3c;
+  --vscode-tab-active-background: #1e1e1e;
+  --vscode-tab-inactive-background: #2d2d2d;
+  --vscode-border: #252526;
+  --vscode-hover: #2a2a2a;
+  --vscode-selection: #264f78;
+  --vscode-accent: #007acc;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+code, pre {
+  font-family: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Professional Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(121, 121, 121, 0.4);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 100, 100, 0.7);
+}
+
+/* Thin scrollbar variant */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(121, 121, 121, 0.3);
+  border-radius: 3px;
+}
+
+/* Selection styling */
+::selection {
+  background: var(--vscode-selection);
+  color: white;
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--vscode-accent);
+  outline-offset: 2px;
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Disable transitions for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Monaco Editor container */
+.monaco-editor-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Professional loading spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Professional button styles */
+.btn-primary {
+  @apply px-4 py-2 bg-[#007acc] text-white rounded hover:bg-[#005a9e] transition-colors font-medium;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-[#3c3c3c] text-white rounded hover:bg-[#505050] transition-colors;
+}
+
+.btn-ghost {
+  @apply px-4 py-2 hover:bg-[#2a2a2a] rounded transition-colors;
+}
+
+/* Professional input styles */
+.input-primary {
+  @apply px-3 py-2 bg-[#3c3c3c] border border-[#3c3c3c] rounded text-[#cccccc] outline-none focus:border-[#007acc] transition-colors;
+}
+
+/* Badge styles */
+.badge {
+  @apply px-2 py-0.5 text-xs rounded-full bg-[#007acc] text-white font-medium;
+}
+
+/* Tooltip styles */
+.tooltip {
+  @apply absolute z-50 px-2 py-1 bg-[#3c3c3c] text-white text-xs rounded shadow-lg pointer-events-none;
+}
